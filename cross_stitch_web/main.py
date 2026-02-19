@@ -8,6 +8,8 @@ from PIL import Image, ImageDraw, ImageFont
 import uvicorn
 from contextlib import asynccontextmanager
 import time
+# Импорт справочника цветов DMC
+from dmc_colors import find_closest_dmc_color, DMC_COLORS
 
 # Конфигурация
 UPLOAD_DIR = "uploads"
@@ -59,11 +61,10 @@ def create_numbered_pattern(
     output_image_path: str,
     max_width_cells: int = 80,
     max_colors: int = 24,
-    cell_size: int = 40  # Увеличиваем размер ячейки для читаемости номеров
+    cell_size: int = 40
 ):
     """
-    Генерирует схему для вышивки с номерами цветов в каждой ячейке.
-    Возвращает PNG с цветными ячейками и номерами.
+    Генерирует схему для вышивки с номерами цветов DMC в каждой ячейке.
     """
     
     # Открываем изображение
@@ -82,8 +83,36 @@ def create_numbered_pattern(
     
     # Получаем уникальные цвета
     unique_colors = sorted(set(quantized.getdata()))
-    color_map = {color: i+1 for i, color in enumerate(unique_colors)}
-    reverse_color_map = {v: k for k, v in color_map.items()}
+    
+    # Создаем маппинг RGB -> DMC
+    color_to_dmc = {}
+    dmc_to_rgb = {}
+    dmc_numbers = set()
+    
+    for rgb in unique_colors:
+        dmc_num, dmc_name, dmc_rgb = find_closest_dmc_color(rgb)
+        color_to_dmc[rgb] = {
+            "number": dmc_num,
+            "name": dmc_name,
+            "original_rgb": rgb,
+            "dmc_rgb": dmc_rgb
+        }
+        dmc_to_rgb[dmc_num] = dmc_rgb
+        dmc_numbers.add(dmc_num)
+    
+    # Сортируем DMC номера для последовательной нумерации в схеме
+    sorted_dmc_numbers = sorted(dmc_numbers)
+    dmc_index_map = {dmc_num: i+1 for i, dmc_num in enumerate(sorted_dmc_numbers)}
+    
+    # Создаем обратный маппинг для отображения
+    display_color_map = {}
+    for rgb, info in color_to_dmc.items():
+        display_color_map[rgb] = {
+            "display_number": dmc_index_map[info["number"]],
+            "dmc_number": info["number"],
+            "dmc_name": info["name"],
+            "dmc_rgb": info["dmc_rgb"]
+        }
     
     # Создаем изображение для схемы
     img_width = new_width * cell_size
@@ -92,9 +121,8 @@ def create_numbered_pattern(
     pattern_img = Image.new('RGB', (img_width, img_height), 'white')
     draw = ImageDraw.Draw(pattern_img)
     
-    # Пытаемся загрузить шрифт побольше для номеров
+    # Загружаем шрифт
     try:
-        # Пробуем разные шрифты
         font_size = cell_size // 2
         try:
             font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", font_size)
@@ -102,19 +130,20 @@ def create_numbered_pattern(
             try:
                 font = ImageFont.truetype("arialbd.ttf", font_size)
             except:
-                try:
-                    font = ImageFont.truetype("Arial Bold", font_size)
-                except:
-                    font = ImageFont.load_default()
+                font = ImageFont.load_default()
     except:
         font = ImageFont.load_default()
     
     # Рисуем сетку и заполняем цветом
     for y in range(new_height):
         for x in range(new_width):
-            # Получаем цвет для этой ячейки
-            color = reverse_color_map[color_map[quantized.getpixel((x, y))]]
-            color_number = color_map[quantized.getpixel((x, y))]
+            # Получаем оригинальный цвет пикселя
+            original_rgb = quantized.getpixel((x, y))
+            
+            # Получаем соответствующий DMC цвет и номер для отображения
+            display_info = display_color_map[original_rgb]
+            dmc_rgb = display_info["dmc_rgb"]
+            display_number = display_info["display_number"]
             
             # Координаты ячейки
             x1 = x * cell_size
@@ -122,23 +151,18 @@ def create_numbered_pattern(
             x2 = x1 + cell_size
             y2 = y1 + cell_size
             
-            # Заливаем ячейку цветом
-            draw.rectangle([x1, y1, x2, y2], fill=color, outline=None)
+            # Заливаем ячейку DMC цветом
+            draw.rectangle([x1, y1, x2, y2], fill=dmc_rgb, outline=None)
             
-            # Добавляем текстуру "крестика" (опционально)
-            # Рисуем два диагональных креста
-            line_color = get_contrast_color(color)
-            # Слегка затемняем/осветляем для текстуры
-            texture_color = tuple(int(c * 0.95) for c in color)
-            
-            # Рисуем тонкие диагональные линии для имитации крестика
+            # Добавляем текстуру "крестика"
+            texture_color = tuple(int(c * 0.95) for c in dmc_rgb)
             draw.line([(x1+2, y1+2), (x2-2, y2-2)], fill=texture_color, width=1)
             draw.line([(x1+2, y2-2), (x2-2, y1+2)], fill=texture_color, width=1)
             
-            # Добавляем номер цвета в центр ячейки
-            text = str(color_number)
+            # Добавляем номер цвета
+            text = str(display_number)
             
-            # Получаем размер текста для центрирования
+            # Получаем размер текста
             try:
                 bbox = draw.textbbox((0, 0), text, font=font)
                 text_width = bbox[2] - bbox[0]
@@ -147,38 +171,30 @@ def create_numbered_pattern(
                 text_width = font_size // 2
                 text_height = font_size // 2
             
-            # Позиция для текста (по центру ячейки)
+            # Позиция для текста (по центру)
             text_x = x1 + (cell_size - text_width) // 2
             text_y = y1 + (cell_size - text_height) // 2
             
             # Определяем контрастный цвет для текста
-            text_color = get_contrast_color(color)
+            brightness = (dmc_rgb[0] * 299 + dmc_rgb[1] * 587 + dmc_rgb[2] * 114) / 1000
+            text_color = (0, 0, 0) if brightness > 128 else (255, 255, 255)
+            shadow_color = (255, 255, 255) if brightness > 128 else (0, 0, 0)
             
-            # Рисуем текст с небольшой тенью для читаемости
-            if text_color == (255, 255, 255):
-                shadow_color = (0, 0, 0)
-            else:
-                shadow_color = (255, 255, 255)
-            
-            # Тень
+            # Тень и текст
             draw.text((text_x+1, text_y+1), text, fill=shadow_color, font=font)
-            # Основной текст
             draw.text((text_x, text_y), text, fill=text_color, font=font)
     
-    # Рисуем сетку (толстые линии)
+    # Рисуем сетку
     grid_color = (100, 100, 100)
-    
-    # Вертикальные линии
     for i in range(new_width + 1):
         x = i * cell_size
         draw.line([(x, 0), (x, img_height)], fill=grid_color, width=1)
     
-    # Горизонтальные линии
     for i in range(new_height + 1):
         y = i * cell_size
         draw.line([(0, y), (img_width, y)], fill=grid_color, width=1)
     
-    # Рисуем более толстые линии каждые 10 клеток для удобства
+    # Толстые линии каждые 10 клеток
     thick_color = (0, 0, 0)
     for i in range(0, new_width + 1, 10):
         x = i * cell_size
@@ -188,36 +204,42 @@ def create_numbered_pattern(
         y = i * cell_size
         draw.line([(0, y), (img_width, y)], fill=thick_color, width=2)
     
-    # Добавляем номера строк и столбцов по краям
+    # Добавляем поля для номеров строк/столбцов
     margin = 30
     full_img = Image.new('RGB', (img_width + 2*margin, img_height + 2*margin), 'white')
     full_img.paste(pattern_img, (margin, margin))
     draw = ImageDraw.Draw(full_img)
     
-    # Номера строк (слева и справа)
+    # Номера строк
     for y in range(new_height):
         y_pos = margin + y * cell_size + cell_size // 2
-        # Слева
         draw.text((5, y_pos - 7), str(y+1), fill=(0,0,0), font=font)
-        # Справа
         draw.text((img_width + margin + 5, y_pos - 7), str(y+1), fill=(0,0,0), font=font)
     
-    # Номера столбцов (сверху и снизу)
+    # Номера столбцов
     for x in range(new_width):
         x_pos = margin + x * cell_size + cell_size // 2
-        # Сверху
         draw.text((x_pos - 7, 5), str(x+1), fill=(0,0,0), font=font)
-        # Снизу
         draw.text((x_pos - 7, img_height + margin + 5), str(x+1), fill=(0,0,0), font=font)
     
     # Сохраняем результат
     full_img.save(output_image_path, 'PNG', quality=95)
     
+    # Подготавливаем информацию о цветах для фронтенда
+    color_info = {}
+    for i, dmc_num in enumerate(sorted_dmc_numbers, 1):
+        color_info[f"color_{i}"] = {
+            "display_number": i,
+            "dmc_number": dmc_num,
+            "name": DMC_COLORS[dmc_num]["name"],
+            "rgb": DMC_COLORS[dmc_num]["rgb"]
+        }
+    
     return {
         "width": new_width,
         "height": new_height,
-        "colors": len(unique_colors),
-        "color_map": {f"color_{k}": list(v) for k, v in reverse_color_map.items()},
+        "colors": len(sorted_dmc_numbers),
+        "color_map": color_info,
         "cell_size": cell_size
     }
 

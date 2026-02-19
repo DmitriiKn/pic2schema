@@ -638,6 +638,9 @@
             // Предпросмотр
             previewImg.src = data.preview_url;
             
+            // Сохраняем ID файла
+            previewImg.setAttribute('data-file-id', data.file_id);
+            
             // Статистика
             stats.innerHTML = `
                 <div class="stat-item">
@@ -646,7 +649,7 @@
                 </div>
                 <div class="stat-item">
                     <div class="stat-value">${data.colors}</div>
-                    <div class="stat-label">цветов</div>
+                    <div class="stat-label">цветов DMC</div>
                 </div>
                 <div class="stat-item">
                     <div class="stat-value">${data.width * data.height}</div>
@@ -654,23 +657,24 @@
                 </div>
             `;
             
-            // Палитра цветов
+            // Палитра цветов с номерами DMC
             colorGrid.innerHTML = '';
             for (let i = 1; i <= data.colors; i++) {
-                const color = data.color_map[`color_${i}`];
-                if (color) {
+                const colorInfo = data.color_map[`color_${i}`];
+                if (colorInfo) {
                     const chip = document.createElement('div');
                     chip.className = 'color-chip';
                     
-                    // Определяем контрастный текст
-                    const brightness = (color[0] * 299 + color[1] * 587 + color[2] * 114) / 1000;
+                    const rgb = colorInfo.rgb;
+                    const brightness = (rgb[0] * 299 + rgb[1] * 587 + rgb[2] * 114) / 1000;
                     const textColor = brightness > 128 ? '#000000' : '#ffffff';
                     
                     chip.innerHTML = `
-                        <div class="color-square" style="background: rgb(${color[0]}, ${color[1]}, ${color[2]}); color: ${textColor}">
-                            ${i}
+                        <div class="color-square" style="background: rgb(${rgb[0]}, ${rgb[1]}, ${rgb[2]}); color: ${textColor}">
+                            ${colorInfo.display_number}
                         </div>
-                        <span class="color-number">№${i}</span>
+                        <span class="color-number">DMC ${colorInfo.dmc_number}</span>
+                        <span style="font-size: 0.7rem; color: #666;">${colorInfo.name}</span>
                     `;
                     colorGrid.appendChild(chip);
                 }
@@ -678,11 +682,9 @@
             
             // Ссылка на скачивание
             downloadPng.href = data.image_url;
-            downloadPng.download = `cross_stitch_pattern_${data.width}x${data.height}.png`;
+            downloadPng.download = `dmc_pattern_${data.width}x${data.height}.png`;
             
             result.style.display = 'block';
-            
-            // Скроллим к результату
             result.scrollIntoView({ behavior: 'smooth' });
         }
 
