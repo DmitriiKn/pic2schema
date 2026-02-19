@@ -1,0 +1,46 @@
+version: '3.8'
+
+services:
+  app:
+    build: .
+    container_name: cross-stitch-app
+    restart: unless-stopped
+    volumes:
+      - uploads_data:/app/uploads
+      - ./static:/app/static:ro
+    environment:
+      - ENVIRONMENT=production
+      - MAX_UPLOAD_SIZE=10485760
+    networks:
+      - cross-stitch-network
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 512M
+        reservations:
+          cpus: '0.5'
+          memory: 256M
+
+  nginx:
+    image: nginx:alpine
+    container_name: cross-stitch-nginx
+    restart: unless-stopped
+    ports:
+      - "80:80"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./static:/usr/share/nginx/html/static:ro
+      - uploads_data:/usr/share/nginx/html/uploads:ro
+    depends_on:
+      - app
+    networks:
+      - cross-stitch-network
+
+networks:
+  cross-stitch-network:
+    driver: bridge
+
+volumes:
+  uploads_data:
+    driver: local

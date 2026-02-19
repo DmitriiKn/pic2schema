@@ -1,0 +1,515 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cross Stitch Pattern Generator</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, system-ui, sans-serif;
+        }
+
+        body {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 2rem 1rem;
+        }
+
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+        }
+
+        .card {
+            background: white;
+            border-radius: 20px;
+            padding: 2rem;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            backdrop-filter: blur(10px);
+        }
+
+        h1 {
+            font-size: 2.5rem;
+            font-weight: 600;
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            margin-bottom: 1rem;
+            text-align: center;
+        }
+
+        .subtitle {
+            text-align: center;
+            color: #666;
+            margin-bottom: 2rem;
+            font-size: 1.1rem;
+        }
+
+        .upload-area {
+            border: 2px dashed #cbd5e0;
+            border-radius: 10px;
+            padding: 2rem;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.3s;
+            background: #f7fafc;
+        }
+
+        .upload-area:hover {
+            border-color: #667eea;
+            background: #f0f4f8;
+        }
+
+        .upload-area.dragover {
+            border-color: #667eea;
+            background: #e6eefa;
+        }
+
+        .upload-icon {
+            width: 48px;
+            height: 48px;
+            fill: #667eea;
+            margin-bottom: 1rem;
+        }
+
+        .file-info {
+            margin-top: 1rem;
+            padding: 1rem;
+            background: #f0f4f8;
+            border-radius: 8px;
+            display: none;
+        }
+
+        .settings {
+            margin: 2rem 0;
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 1.5rem;
+        }
+
+        .setting-item {
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+        }
+
+        .setting-item label {
+            font-weight: 500;
+            color: #4a5568;
+        }
+
+        .setting-item input {
+            padding: 0.75rem;
+            border: 2px solid #e2e8f0;
+            border-radius: 8px;
+            font-size: 1rem;
+            transition: border-color 0.3s;
+        }
+
+        .setting-item input:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+
+        .setting-item .hint {
+            font-size: 0.85rem;
+            color: #718096;
+        }
+
+        .generate-btn {
+            width: 100%;
+            padding: 1rem;
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            color: white;
+            border: none;
+            border-radius: 10px;
+            font-size: 1.2rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+
+        .generate-btn:hover:not(:disabled) {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 20px rgba(102, 126, 234, 0.4);
+        }
+
+        .generate-btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .loader {
+            display: none;
+            text-align: center;
+            margin: 2rem 0;
+        }
+
+        .loader-spinner {
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #667eea;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 1rem;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .result {
+            display: none;
+            margin-top: 2rem;
+            padding-top: 2rem;
+            border-top: 2px solid #e2e8f0;
+        }
+
+        .preview {
+            text-align: center;
+            margin-bottom: 1.5rem;
+        }
+
+        .preview img {
+            max-width: 100%;
+            border-radius: 10px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+
+        .stats {
+            background: #f7fafc;
+            padding: 1rem;
+            border-radius: 8px;
+            margin-bottom: 1.5rem;
+            display: flex;
+            justify-content: space-around;
+            text-align: center;
+        }
+
+        .stat-item {
+            flex: 1;
+        }
+
+        .stat-value {
+            font-size: 1.5rem;
+            font-weight: 600;
+            color: #667eea;
+        }
+
+        .stat-label {
+            color: #718096;
+            font-size: 0.9rem;
+        }
+
+        .download-buttons {
+            display: flex;
+            gap: 1rem;
+        }
+
+        .download-btn {
+            flex: 1;
+            padding: 1rem;
+            border: none;
+            border-radius: 8px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+            text-decoration: none;
+            text-align: center;
+        }
+
+        .download-png {
+            background: #48bb78;
+            color: white;
+        }
+
+        .download-png:hover {
+            background: #38a169;
+        }
+
+        .download-txt {
+            background: #4299e1;
+            color: white;
+        }
+
+        .download-txt:hover {
+            background: #3182ce;
+        }
+
+        .error {
+            background: #fed7d7;
+            color: #c53030;
+            padding: 1rem;
+            border-radius: 8px;
+            margin-top: 1rem;
+            display: none;
+        }
+
+        .instructions {
+            margin-top: 2rem;
+            padding: 1.5rem;
+            background: #f7fafc;
+            border-radius: 10px;
+        }
+
+        .instructions h3 {
+            color: #4a5568;
+            margin-bottom: 1rem;
+        }
+
+        .instructions ol {
+            padding-left: 1.5rem;
+            color: #4a5568;
+        }
+
+        .instructions li {
+            margin-bottom: 0.5rem;
+        }
+
+        .color-palette {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.5rem;
+            margin: 1rem 0;
+            padding: 1rem;
+            background: white;
+            border-radius: 8px;
+        }
+
+        .color-chip {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            font-size: 0.8rem;
+        }
+
+        .color-square {
+            width: 30px;
+            height: 30px;
+            border-radius: 4px;
+            margin-bottom: 0.2rem;
+            border: 1px solid #ddd;
+        }
+
+        footer {
+            text-align: center;
+            margin-top: 2rem;
+            color: white;
+            opacity: 0.8;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="card">
+            <h1>🧵 Cross Stitch Pattern Generator</h1>
+            <p class="subtitle">Превратите любое фото в схему для вышивки</p>
+            
+            <div class="upload-area" id="uploadArea">
+                <svg class="upload-icon" viewBox="0 0 24 24">
+                    <path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/>
+                </svg>
+                <p>Перетащите изображение сюда или кликните для выбора</p>
+                <input type="file" id="fileInput" accept="image/*" style="display: none;">
+            </div>
+            
+            <div class="file-info" id="fileInfo"></div>
+            
+            <div class="settings">
+                <div class="setting-item">
+                    <label>Ширина схемы (крестики)</label>
+                    <input type="number" id="maxWidth" min="10" max="200" value="80">
+                    <span class="hint">от 10 до 200</span>
+                </div>
+                <div class="setting-item">
+                    <label>Количество цветов</label>
+                    <input type="number" id="maxColors" min="2" max="50" value="24">
+                    <span class="hint">от 2 до 50</span>
+                </div>
+            </div>
+            
+            <button class="generate-btn" id="generateBtn" disabled>Сгенерировать схему</button>
+            
+            <div class="loader" id="loader">
+                <div class="loader-spinner"></div>
+                <p>Генерируем схему... это может занять несколько секунд</p>
+            </div>
+            
+            <div class="error" id="error"></div>
+            
+            <div class="result" id="result">
+                <h3 style="margin-bottom: 1rem;">🎉 Готово!</h3>
+                
+                <div class="preview">
+                    <img id="previewImg" src="" alt="Preview">
+                </div>
+                
+                <div class="stats" id="stats"></div>
+                
+                <div class="color-palette" id="colorPalette"></div>
+                
+                <div class="download-buttons">
+                    <a class="download-btn download-png" id="downloadPng" download>📷 Скачать PNG</a>
+                    <a class="download-btn download-txt" id="downloadTxt" download>📄 Скачать TXT</a>
+                </div>
+            </div>
+            
+            <div class="instructions">
+                <h3>📝 Инструкция</h3>
+                <ol>
+                    <li><strong>Загрузите фото</strong> — подойдут портреты, пейзажи, любые изображения</li>
+                    <li><strong>Настройте параметры</strong> — выберите желаемый размер схемы и количество цветов</li>
+                    <li><strong>Скачайте результат</strong> — получите PNG схему с сеткой и текстовый файл с номерами цветов</li>
+                    <li><strong>Вышивайте!</strong> — используйте схему для создания уникальной вышивки</li>
+                </ol>
+                <p style="margin-top: 1rem; color: #667eea;">
+                    💡 Совет: для начала попробуйте 16-24 цвета — это оптимально для большинства изображений
+                </p>
+            </div>
+        </div>
+        <footer>
+            Сделано с ❤️ для любителей вышивки
+        </footer>
+    </div>
+
+    <script>
+        const uploadArea = document.getElementById('uploadArea');
+        const fileInput = document.getElementById('fileInput');
+        const fileInfo = document.getElementById('fileInfo');
+        const generateBtn = document.getElementById('generateBtn');
+        const loader = document.getElementById('loader');
+        const error = document.getElementById('error');
+        const result = document.getElementById('result');
+        const previewImg = document.getElementById('previewImg');
+        const stats = document.getElementById('stats');
+        const colorPalette = document.getElementById('colorPalette');
+        const downloadPng = document.getElementById('downloadPng');
+        const downloadTxt = document.getElementById('downloadTxt');
+        const maxWidth = document.getElementById('maxWidth');
+        const maxColors = document.getElementById('maxColors');
+
+        let currentFile = null;
+        let currentResult = null;
+
+        // Drag & drop обработчики
+        uploadArea.addEventListener('click', () => fileInput.click());
+        
+        uploadArea.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            uploadArea.classList.add('dragover');
+        });
+
+        uploadArea.addEventListener('dragleave', () => {
+            uploadArea.classList.remove('dragover');
+        });
+
+        uploadArea.addEventListener('drop', (e) => {
+            e.preventDefault();
+            uploadArea.classList.remove('dragover');
+            const file = e.dataTransfer.files[0];
+            if (file && file.type.startsWith('image/')) {
+                handleFileSelect(file);
+            }
+        });
+
+        fileInput.addEventListener('change', (e) => {
+            if (e.target.files[0]) {
+                handleFileSelect(e.target.files[0]);
+            }
+        });
+
+        function handleFileSelect(file) {
+            currentFile = file;
+            fileInfo.style.display = 'block';
+            fileInfo.innerHTML = `📷 ${file.name} (${(file.size / 1024).toFixed(1)} KB)`;
+            generateBtn.disabled = false;
+        }
+
+        generateBtn.addEventListener('click', async () => {
+            if (!currentFile) return;
+
+            // Показываем загрузку
+            generateBtn.disabled = true;
+            loader.style.display = 'block';
+            error.style.display = 'none';
+            result.style.display = 'none';
+
+            const formData = new FormData();
+            formData.append('file', currentFile);
+            formData.append('max_width', maxWidth.value);
+            formData.append('max_colors', maxColors.value);
+
+            try {
+                const response = await fetch('/generate', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                if (!response.ok) {
+                    throw new Error(`Ошибка: ${response.statusText}`);
+                }
+
+                const data = await response.json();
+                currentResult = data;
+
+                // Показываем результат
+                displayResult(data);
+                
+            } catch (err) {
+                error.style.display = 'block';
+                error.textContent = `❌ ${err.message}`;
+            } finally {
+                generateBtn.disabled = false;
+                loader.style.display = 'none';
+            }
+        });
+
+        function displayResult(data) {
+            // Предпросмотр
+            previewImg.src = data.preview_url;
+            
+            // Статистика
+            stats.innerHTML = `
+                <div class="stat-item">
+                    <div class="stat-value">${data.width}×${data.height}</div>
+                    <div class="stat-label">крестиков</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-value">${data.colors}</div>
+                    <div class="stat-label">цветов</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-value">≈${Math.round(data.width * data.height / 100)}</div>
+                    <div class="stat-label">сотен крестиков</div>
+                </div>
+            `;
+            
+            // Палитра цветов
+            colorPalette.innerHTML = '';
+            for (let i = 1; i <= data.colors; i++) {
+                const color = data.color_map[`color_${i}`];
+                if (color) {
+                    const chip = document.createElement('div');
+                    chip.className = 'color-chip';
+                    chip.innerHTML = `
+                        <div class="color-square" style="background: rgb(${color[0]}, ${color[1]}, ${color[2]})"></div>
+                        <span>${i}</span>
+                    `;
+                    colorPalette.appendChild(chip);
+                }
+            }
+            
+            // Ссылки на скачивание
+            downloadPng.href = data.image_url;
+            downloadTxt.href = data.text_url;
+            
+            result.style.display = 'block';
+        }
+    </script>
+</body>
+</html>
