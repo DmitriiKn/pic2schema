@@ -19,7 +19,7 @@
         }
 
         .container {
-            max-width: 800px;
+            max-width: 1000px;
             margin: 0 auto;
         }
 
@@ -28,7 +28,6 @@
             border-radius: 20px;
             padding: 2rem;
             box-shadow: 0 20px 60px rgba(0,0,0,0.3);
-            backdrop-filter: blur(10px);
         }
 
         h1 {
@@ -37,7 +36,7 @@
             background: linear-gradient(135deg, #667eea, #764ba2);
             -webkit-background-clip: text;
             -webkit-text-fill-color: transparent;
-            margin-bottom: 1rem;
+            margin-bottom: 0.5rem;
             text-align: center;
         }
 
@@ -86,7 +85,7 @@
         .settings {
             margin: 2rem 0;
             display: grid;
-            grid-template-columns: 1fr 1fr;
+            grid-template-columns: repeat(3, 1fr);
             gap: 1.5rem;
         }
 
@@ -170,20 +169,30 @@
             border-top: 2px solid #e2e8f0;
         }
 
-        .preview {
+        .preview-container {
             text-align: center;
             margin-bottom: 1.5rem;
+            background: #f7fafc;
+            padding: 1rem;
+            border-radius: 10px;
         }
 
-        .preview img {
+        .preview {
             max-width: 100%;
+            max-height: 400px;
             border-radius: 10px;
             box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            cursor: zoom-in;
+        }
+
+        .preview.zoomed {
+            max-height: none;
+            cursor: zoom-out;
         }
 
         .stats {
             background: #f7fafc;
-            padding: 1rem;
+            padding: 1.5rem;
             border-radius: 8px;
             margin-bottom: 1.5rem;
             display: flex;
@@ -196,7 +205,7 @@
         }
 
         .stat-value {
-            font-size: 1.5rem;
+            font-size: 1.8rem;
             font-weight: 600;
             color: #667eea;
         }
@@ -204,6 +213,58 @@
         .stat-label {
             color: #718096;
             font-size: 0.9rem;
+        }
+
+        .color-palette {
+            margin: 1.5rem 0;
+            padding: 1rem;
+            background: white;
+            border-radius: 8px;
+            border: 1px solid #e2e8f0;
+        }
+
+        .color-palette h4 {
+            margin-bottom: 1rem;
+            color: #4a5568;
+        }
+
+        .color-grid {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 1rem;
+            justify-content: center;
+        }
+
+        .color-chip {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            min-width: 60px;
+        }
+
+        .color-square {
+            width: 40px;
+            height: 40px;
+            border-radius: 8px;
+            margin-bottom: 0.3rem;
+            border: 2px solid white;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            color: white;
+            text-shadow: 1px 1px 2px rgba(0,0,0,0.5);
+        }
+
+        .color-number {
+            font-size: 0.9rem;
+            font-weight: 600;
+            color: #4a5568;
+        }
+
+        .download-section {
+            margin-top: 1.5rem;
         }
 
         .download-buttons {
@@ -221,6 +282,7 @@
             transition: all 0.3s;
             text-decoration: none;
             text-align: center;
+            font-size: 1.1rem;
         }
 
         .download-png {
@@ -230,15 +292,6 @@
 
         .download-png:hover {
             background: #38a169;
-        }
-
-        .download-txt {
-            background: #4299e1;
-            color: white;
-        }
-
-        .download-txt:hover {
-            background: #3182ce;
         }
 
         .error {
@@ -271,29 +324,14 @@
             margin-bottom: 0.5rem;
         }
 
-        .color-palette {
-            display: flex;
-            flex-wrap: wrap;
-            gap: 0.5rem;
-            margin: 1rem 0;
-            padding: 1rem;
-            background: white;
-            border-radius: 8px;
-        }
-
-        .color-chip {
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            font-size: 0.8rem;
-        }
-
-        .color-square {
-            width: 30px;
-            height: 30px;
-            border-radius: 4px;
-            margin-bottom: 0.2rem;
-            border: 1px solid #ddd;
+        .feature-badge {
+            display: inline-block;
+            background: #667eea;
+            color: white;
+            padding: 0.3rem 1rem;
+            border-radius: 20px;
+            font-size: 0.9rem;
+            margin-bottom: 1rem;
         }
 
         footer {
@@ -308,7 +346,9 @@
     <div class="container">
         <div class="card">
             <h1>🧵 Cross Stitch Pattern Generator</h1>
-            <p class="subtitle">Превратите любое фото в схему для вышивки</p>
+            <p class="subtitle">Превратите любое фото в схему для вышивки с номерами цветов</p>
+            
+            <div class="feature-badge">✨ Новая функция: схема с номерами прямо на картинке!</div>
             
             <div class="upload-area" id="uploadArea">
                 <svg class="upload-icon" viewBox="0 0 24 24">
@@ -323,17 +363,22 @@
             <div class="settings">
                 <div class="setting-item">
                     <label>Ширина схемы (крестики)</label>
-                    <input type="number" id="maxWidth" min="10" max="200" value="80">
+                    <input type="number" id="maxWidth" min="10" max="200" value="60">
                     <span class="hint">от 10 до 200</span>
                 </div>
                 <div class="setting-item">
                     <label>Количество цветов</label>
-                    <input type="number" id="maxColors" min="2" max="50" value="24">
+                    <input type="number" id="maxColors" min="2" max="50" value="20">
                     <span class="hint">от 2 до 50</span>
+                </div>
+                <div class="setting-item">
+                    <label>Размер ячейки (пиксели)</label>
+                    <input type="number" id="cellSize" min="20" max="60" value="40">
+                    <span class="hint">больше = удобнее читать</span>
                 </div>
             </div>
             
-            <button class="generate-btn" id="generateBtn" disabled>Сгенерировать схему</button>
+            <button class="generate-btn" id="generateBtn" disabled>Сгенерировать схему с номерами</button>
             
             <div class="loader" id="loader">
                 <div class="loader-spinner"></div>
@@ -343,33 +388,47 @@
             <div class="error" id="error"></div>
             
             <div class="result" id="result">
-                <h3 style="margin-bottom: 1rem;">🎉 Готово!</h3>
+                <h3 style="margin-bottom: 1rem;">🎉 Ваша схема готова!</h3>
                 
-                <div class="preview">
-                    <img id="previewImg" src="" alt="Preview">
+                <div class="preview-container">
+                    <img class="preview" id="previewImg" src="" alt="Pattern Preview" onclick="this.classList.toggle('zoomed')">
+                    <p style="color: #718096; margin-top: 0.5rem;">👆 Кликните для увеличения</p>
                 </div>
                 
                 <div class="stats" id="stats"></div>
                 
-                <div class="color-palette" id="colorPalette"></div>
+                <div class="color-palette" id="colorPalette">
+                    <h4>🎨 Палитра цветов (номера соответствуют схеме)</h4>
+                    <div class="color-grid" id="colorGrid"></div>
+                </div>
                 
-                <div class="download-buttons">
-                    <a class="download-btn download-png" id="downloadPng" download>📷 Скачать PNG</a>
-                    <a class="download-btn download-txt" id="downloadTxt" download>📄 Скачать TXT</a>
+                <div class="download-section">
+                    <div class="download-buttons">
+                        <a class="download-btn download-png" id="downloadPng" download>📥 Скачать схему (PNG с номерами)</a>
+                    </div>
+                    <p style="text-align: center; color: #718096; margin-top: 1rem; font-size: 0.9rem;">
+                        💡 В каждой клетке указан номер цвета из палитры выше
+                    </p>
                 </div>
             </div>
             
             <div class="instructions">
-                <h3>📝 Инструкция</h3>
+                <h3>📝 Как пользоваться</h3>
                 <ol>
-                    <li><strong>Загрузите фото</strong> — подойдут портреты, пейзажи, любые изображения</li>
-                    <li><strong>Настройте параметры</strong> — выберите желаемый размер схемы и количество цветов</li>
-                    <li><strong>Скачайте результат</strong> — получите PNG схему с сеткой и текстовый файл с номерами цветов</li>
-                    <li><strong>Вышивайте!</strong> — используйте схему для создания уникальной вышивки</li>
+                    <li><strong>Загрузите фото</strong> — подойдут любые изображения</li>
+                    <li><strong>Настройте параметры:</strong>
+                        <ul style="margin-left: 1.5rem; margin-top: 0.3rem;">
+                            <li>Ширина схемы — количество крестиков по горизонтали</li>
+                            <li>Количество цветов — чем больше, тем точнее, но сложнее</li>
+                            <li>Размер ячейки — для удобства чтения номеров</li>
+                        </ul>
+                    </li>
+                    <li><strong>Получите готовую схему</strong> — цветные клетки с номерами</li>
+                    <li><strong>Вышивайте!</strong> — используйте номера цветов из палитры</li>
                 </ol>
-                <p style="margin-top: 1rem; color: #667eea;">
-                    💡 Совет: для начала попробуйте 16-24 цвета — это оптимально для большинства изображений
-                </p>
+                <div style="margin-top: 1rem; padding: 0.5rem; background: #e6eefa; border-radius: 5px;">
+                    <p style="color: #4a5568;">💡 <strong>Совет:</strong> Для печати используйте размер ячейки 40-50 пикселей — номера будут хорошо читаться</p>
+                </div>
             </div>
         </div>
         <footer>
@@ -387,11 +446,11 @@
         const result = document.getElementById('result');
         const previewImg = document.getElementById('previewImg');
         const stats = document.getElementById('stats');
-        const colorPalette = document.getElementById('colorPalette');
+        const colorGrid = document.getElementById('colorGrid');
         const downloadPng = document.getElementById('downloadPng');
-        const downloadTxt = document.getElementById('downloadTxt');
         const maxWidth = document.getElementById('maxWidth');
         const maxColors = document.getElementById('maxColors');
+        const cellSize = document.getElementById('cellSize');
 
         let currentFile = null;
         let currentResult = null;
@@ -443,6 +502,7 @@
             formData.append('file', currentFile);
             formData.append('max_width', maxWidth.value);
             formData.append('max_colors', maxColors.value);
+            formData.append('cell_size', cellSize.value);
 
             try {
                 const response = await fetch('/generate', {
@@ -451,7 +511,8 @@
                 });
 
                 if (!response.ok) {
-                    throw new Error(`Ошибка: ${response.statusText}`);
+                    const errorData = await response.json();
+                    throw new Error(errorData.detail || 'Ошибка генерации');
                 }
 
                 const data = await response.json();
@@ -484,32 +545,55 @@
                     <div class="stat-label">цветов</div>
                 </div>
                 <div class="stat-item">
-                    <div class="stat-value">≈${Math.round(data.width * data.height / 100)}</div>
-                    <div class="stat-label">сотен крестиков</div>
+                    <div class="stat-value">${data.width * data.height}</div>
+                    <div class="stat-label">всего крестиков</div>
                 </div>
             `;
             
             // Палитра цветов
-            colorPalette.innerHTML = '';
+            colorGrid.innerHTML = '';
             for (let i = 1; i <= data.colors; i++) {
                 const color = data.color_map[`color_${i}`];
                 if (color) {
                     const chip = document.createElement('div');
                     chip.className = 'color-chip';
+                    
+                    // Определяем контрастный текст
+                    const brightness = (color[0] * 299 + color[1] * 587 + color[2] * 114) / 1000;
+                    const textColor = brightness > 128 ? '#000000' : '#ffffff';
+                    
                     chip.innerHTML = `
-                        <div class="color-square" style="background: rgb(${color[0]}, ${color[1]}, ${color[2]})"></div>
-                        <span>${i}</span>
+                        <div class="color-square" style="background: rgb(${color[0]}, ${color[1]}, ${color[2]}); color: ${textColor}">
+                            ${i}
+                        </div>
+                        <span class="color-number">№${i}</span>
                     `;
-                    colorPalette.appendChild(chip);
+                    colorGrid.appendChild(chip);
                 }
             }
             
-            // Ссылки на скачивание
+            // Ссылка на скачивание
             downloadPng.href = data.image_url;
-            downloadTxt.href = data.text_url;
+            downloadPng.download = `cross_stitch_pattern_${data.width}x${data.height}.png`;
             
             result.style.display = 'block';
+            
+            // Скроллим к результату
+            result.scrollIntoView({ behavior: 'smooth' });
         }
+
+        // Валидация ввода
+        function validateInput(input, min, max) {
+            let value = parseInt(input.value);
+            if (isNaN(value)) value = min;
+            if (value < min) value = min;
+            if (value > max) value = max;
+            input.value = value;
+        }
+
+        maxWidth.addEventListener('change', () => validateInput(maxWidth, 10, 200));
+        maxColors.addEventListener('change', () => validateInput(maxColors, 2, 50));
+        cellSize.addEventListener('change', () => validateInput(cellSize, 20, 60));
     </script>
 </body>
 </html>

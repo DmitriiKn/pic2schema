@@ -12,7 +12,6 @@ import time
 # Конфигурация
 UPLOAD_DIR = "uploads"
 MAX_FILE_SIZE = int(os.getenv("MAX_UPLOAD_SIZE", 10 * 1024 * 1024))  # 10MB по умолчанию
-ALLOWED_EXTENSIONS = {'.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp'}
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -27,7 +26,6 @@ async def lifespan(app: FastAPI):
     for filename in os.listdir(UPLOAD_DIR):
         filepath = os.path.join(UPLOAD_DIR, filename)
         if os.path.isfile(filepath):
-            # Удаляем файлы старше 1 часа
             if current_time - os.path.getmtime(filepath) > 3600:
                 os.remove(filepath)
                 print(f"Removed old file: {filename}")
@@ -35,7 +33,6 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="Cross Stitch Pattern Generator",
     lifespan=lifespan,
-    # Отключаем документацию в production
     docs_url="/docs" if os.getenv("ENVIRONMENT") != "production" else None,
     redoc_url="/redoc" if os.getenv("ENVIRONMENT") != "production" else None
 )
@@ -51,15 +48,23 @@ def simplify_palette(image, num_colors):
     """Упрощает палитру изображения до заданного количества цветов."""
     return image.quantize(colors=num_colors, method=Image.MEDIANCUT).convert('RGB')
 
-def create_cross_stitch_pattern(
-    image_path: str, 
-    output_image_path: str, 
-    output_text_path: str,
+def get_contrast_color(rgb):
+    """Определяет контрастный цвет (черный или белый) для текста на фоне."""
+    r, g, b = rgb
+    brightness = (r * 299 + g * 587 + b * 114) / 1000
+    return (0, 0, 0) if brightness > 128 else (255, 255, 255)
+
+def create_numbered_pattern(
+    image_path: str,
+    output_image_path: str,
     max_width_cells: int = 80,
     max_colors: int = 24,
-    cell_size: int = 20
+    cell_size: int = 40  # Увеличиваем размер ячейки для читаемости номеров
 ):
-    """Генерирует схему для вышивки крестиком."""
+    """
+    Генерирует схему для вышивки с номерами цветов в каждой ячейке.
+    Возвращает PNG с цветными ячейками и номерами.
+    """
     
     # Открываем изображение
     original = Image.open(image_path)
@@ -68,6 +73,8 @@ def create_cross_stitch_pattern(
     aspect_ratio = original.height / original.width
     new_width = min(max_width_cells, original.width)
     new_height = int(new_width * aspect_ratio)
+    
+    print(f"Генерация схемы: {new_width} x {new_height} крестиков")
     
     # Изменяем размер и упрощаем цвета
     small_img = original.resize((new_width, new_height), Image.Resampling.LANCZOS)
@@ -78,84 +85,140 @@ def create_cross_stitch_pattern(
     color_map = {color: i+1 for i, color in enumerate(unique_colors)}
     reverse_color_map = {v: k for k, v in color_map.items()}
     
-    # Сохраняем текстовую схему
-    with open(output_text_path, 'w', encoding='utf-8') as f:
-        f.write("СХЕМА ДЛЯ ВЫШИВКИ КРЕСТИКОМ\n")
-        f.write("=" * 50 + "\n\n")
-        f.write(f"Размер: {new_width} x {new_height} крестиков\n")
-        f.write(f"Цветов: {len(unique_colors)}\n\n")
-        
-        f.write("ПАЛИТРА:\n")
-        for color_id, rgb in reverse_color_map.items():
-            f.write(f"  {color_id:2d} = RGB{tuple(rgb)}\n")
-        f.write("\n")
-        
-        f.write("СХЕМА (цифры = номера цветов):\n")
-        pixels = list(quantized.getdata())
-        for y in range(new_height):
-            row = pixels[y*new_width:(y+1)*new_width]
-            row_str = ''.join([str(color_map.get(p, '0')) for p in row])
-            # Группируем по 5 цифр для читаемости
-            formatted = ' '.join([row_str[i:i+5] for i in range(0, len(row_str), 5)])
-            f.write(f"{y+1:3d} | {formatted}\n")
-    
-    # Создаем PNG схему
+    # Создаем изображение для схемы
     img_width = new_width * cell_size
     img_height = new_height * cell_size
     
     pattern_img = Image.new('RGB', (img_width, img_height), 'white')
-    
-    # Заполняем цветом
-    for y in range(new_height):
-        for x in range(new_width):
-            color = reverse_color_map[color_map[quantized.getpixel((x, y))]]
-            
-            for i in range(cell_size):
-                for j in range(cell_size):
-                    # Эффект вышивки
-                    if i < 2 or j < 2 or i > cell_size-3 or j > cell_size-3:
-                        darker = tuple(int(c * 0.8) for c in color)
-                        pattern_img.putpixel((x*cell_size + i, y*cell_size + j), darker)
-                    elif (i + j) % 3 == 0:
-                        darker = tuple(int(c * 0.9) for c in color)
-                        pattern_img.putpixel((x*cell_size + i, y*cell_size + j), darker)
-                    else:
-                        pattern_img.putpixel((x*cell_size + i, y*cell_size + j), color)
-    
-    # Рисуем сетку
-    grid_color = (200, 200, 200)
     draw = ImageDraw.Draw(pattern_img)
     
+    # Пытаемся загрузить шрифт побольше для номеров
+    try:
+        # Пробуем разные шрифты
+        font_size = cell_size // 2
+        try:
+            font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", font_size)
+        except:
+            try:
+                font = ImageFont.truetype("arialbd.ttf", font_size)
+            except:
+                try:
+                    font = ImageFont.truetype("Arial Bold", font_size)
+                except:
+                    font = ImageFont.load_default()
+    except:
+        font = ImageFont.load_default()
+    
+    # Рисуем сетку и заполняем цветом
+    for y in range(new_height):
+        for x in range(new_width):
+            # Получаем цвет для этой ячейки
+            color = reverse_color_map[color_map[quantized.getpixel((x, y))]]
+            color_number = color_map[quantized.getpixel((x, y))]
+            
+            # Координаты ячейки
+            x1 = x * cell_size
+            y1 = y * cell_size
+            x2 = x1 + cell_size
+            y2 = y1 + cell_size
+            
+            # Заливаем ячейку цветом
+            draw.rectangle([x1, y1, x2, y2], fill=color, outline=None)
+            
+            # Добавляем текстуру "крестика" (опционально)
+            # Рисуем два диагональных креста
+            line_color = get_contrast_color(color)
+            # Слегка затемняем/осветляем для текстуры
+            texture_color = tuple(int(c * 0.95) for c in color)
+            
+            # Рисуем тонкие диагональные линии для имитации крестика
+            draw.line([(x1+2, y1+2), (x2-2, y2-2)], fill=texture_color, width=1)
+            draw.line([(x1+2, y2-2), (x2-2, y1+2)], fill=texture_color, width=1)
+            
+            # Добавляем номер цвета в центр ячейки
+            text = str(color_number)
+            
+            # Получаем размер текста для центрирования
+            try:
+                bbox = draw.textbbox((0, 0), text, font=font)
+                text_width = bbox[2] - bbox[0]
+                text_height = bbox[3] - bbox[1]
+            except:
+                text_width = font_size // 2
+                text_height = font_size // 2
+            
+            # Позиция для текста (по центру ячейки)
+            text_x = x1 + (cell_size - text_width) // 2
+            text_y = y1 + (cell_size - text_height) // 2
+            
+            # Определяем контрастный цвет для текста
+            text_color = get_contrast_color(color)
+            
+            # Рисуем текст с небольшой тенью для читаемости
+            if text_color == (255, 255, 255):
+                shadow_color = (0, 0, 0)
+            else:
+                shadow_color = (255, 255, 255)
+            
+            # Тень
+            draw.text((text_x+1, text_y+1), text, fill=shadow_color, font=font)
+            # Основной текст
+            draw.text((text_x, text_y), text, fill=text_color, font=font)
+    
+    # Рисуем сетку (толстые линии)
+    grid_color = (100, 100, 100)
+    
+    # Вертикальные линии
     for i in range(new_width + 1):
         x = i * cell_size
         draw.line([(x, 0), (x, img_height)], fill=grid_color, width=1)
     
+    # Горизонтальные линии
     for i in range(new_height + 1):
         y = i * cell_size
         draw.line([(0, y), (img_width, y)], fill=grid_color, width=1)
     
-    # Добавляем номера
-    try:
-        font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", size=10)
-    except:
-        try:
-            font = ImageFont.truetype("arial.ttf", size=10)
-        except:
-            font = ImageFont.load_default()
+    # Рисуем более толстые линии каждые 10 клеток для удобства
+    thick_color = (0, 0, 0)
+    for i in range(0, new_width + 1, 10):
+        x = i * cell_size
+        draw.line([(x, 0), (x, img_height)], fill=thick_color, width=2)
     
+    for i in range(0, new_height + 1, 10):
+        y = i * cell_size
+        draw.line([(0, y), (img_width, y)], fill=thick_color, width=2)
+    
+    # Добавляем номера строк и столбцов по краям
+    margin = 30
+    full_img = Image.new('RGB', (img_width + 2*margin, img_height + 2*margin), 'white')
+    full_img.paste(pattern_img, (margin, margin))
+    draw = ImageDraw.Draw(full_img)
+    
+    # Номера строк (слева и справа)
     for y in range(new_height):
-        draw.text((2, y*cell_size + 2), str(y+1), fill=(0,0,0), font=font)
+        y_pos = margin + y * cell_size + cell_size // 2
+        # Слева
+        draw.text((5, y_pos - 7), str(y+1), fill=(0,0,0), font=font)
+        # Справа
+        draw.text((img_width + margin + 5, y_pos - 7), str(y+1), fill=(0,0,0), font=font)
     
-    for x in range(0, new_width, 5):
-        draw.text((x*cell_size + 2, 2), str(x+1), fill=(0,0,0), font=font)
+    # Номера столбцов (сверху и снизу)
+    for x in range(new_width):
+        x_pos = margin + x * cell_size + cell_size // 2
+        # Сверху
+        draw.text((x_pos - 7, 5), str(x+1), fill=(0,0,0), font=font)
+        # Снизу
+        draw.text((x_pos - 7, img_height + margin + 5), str(x+1), fill=(0,0,0), font=font)
     
-    pattern_img.save(output_image_path, 'PNG')
+    # Сохраняем результат
+    full_img.save(output_image_path, 'PNG', quality=95)
     
     return {
         "width": new_width,
         "height": new_height,
         "colors": len(unique_colors),
-        "color_map": {f"color_{k}": list(v) for k, v in reverse_color_map.items()}
+        "color_map": {f"color_{k}": list(v) for k, v in reverse_color_map.items()},
+        "cell_size": cell_size
     }
 
 @app.get("/")
@@ -166,7 +229,8 @@ async def root():
 async def generate_pattern(
     file: UploadFile = File(...),
     max_width: int = Form(80),
-    max_colors: int = Form(24)
+    max_colors: int = Form(24),
+    cell_size: int = Form(40)  # Добавляем размер ячейки
 ):
     """Генерирует схему из загруженного изображения."""
     
@@ -180,6 +244,9 @@ async def generate_pattern(
     if max_colors < 2 or max_colors > 50:
         raise HTTPException(400, "Количество цветов должно быть от 2 до 50")
     
+    if cell_size < 20 or cell_size > 60:
+        raise HTTPException(400, "Размер ячейки должен быть от 20 до 60")
+    
     # Проверка размера файла
     file.file.seek(0, 2)
     file_size = file.file.tell()
@@ -190,26 +257,31 @@ async def generate_pattern(
     # Сохраняем загруженный файл
     file_id = str(uuid.uuid4())
     input_path = f"uploads/{file_id}_input{os.path.splitext(file.filename)[1]}"
-    output_image = f"uploads/{file_id}_pattern.png"
-    output_text = f"uploads/{file_id}_pattern.txt"
+    output_image = f"uploads/{file_id}_numbered_pattern.png"
+    output_preview = f"uploads/{file_id}_preview.png"
     
     with open(input_path, "wb") as buffer:
         shutil.copyfileobj(file.file, buffer)
     
     try:
-        # Генерируем схему
-        result = create_cross_stitch_pattern(
+        # Генерируем схему с номерами
+        result = create_numbered_pattern(
             input_path, 
-            output_image, 
-            output_text,
+            output_image,
             max_width_cells=max_width,
-            max_colors=max_colors
+            max_colors=max_colors,
+            cell_size=cell_size
         )
         
+        # Создаем превью
+        img = Image.open(output_image)
+        img.thumbnail((400, 400))
+        img.save(output_preview)
+        
         # Добавляем пути к файлам в результат
-        result["image_url"] = f"/download/{file_id}_pattern.png"
-        result["text_url"] = f"/download/{file_id}_pattern.txt"
-        result["preview_url"] = f"/preview/{file_id}"
+        result["image_url"] = f"/download/{file_id}_numbered_pattern.png"
+        result["preview_url"] = f"/download/{file_id}_preview.png"
+        result["file_id"] = file_id
         
         return JSONResponse(result)
         
@@ -228,22 +300,6 @@ async def download_file(filename: str):
     if not os.path.exists(file_path):
         raise HTTPException(404, "Файл не найден")
     return FileResponse(file_path, filename=filename)
-
-@app.get("/preview/{file_id}")
-async def get_preview(file_id: str):
-    """Возвращает информацию для предпросмотра."""
-    pattern_path = f"uploads/{file_id}_pattern.png"
-    if not os.path.exists(pattern_path):
-        raise HTTPException(404, "Схема не найдена")
-    
-    # Создаем уменьшенную версию для предпросмотра
-    img = Image.open(pattern_path)
-    img.thumbnail((400, 400))
-    
-    preview_path = f"uploads/{file_id}_preview.png"
-    img.save(preview_path)
-    
-    return FileResponse(preview_path)
 
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=8000)
