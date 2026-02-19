@@ -10,6 +10,8 @@ from contextlib import asynccontextmanager
 import time
 # Импорт справочника цветов DMC
 from dmc_colors import find_closest_dmc_color, DMC_COLORS
+# Импорт менеджера очереди
+from file_queue import init_queue_manager, get_queue_manager
 
 # Конфигурация
 UPLOAD_DIR = "uploads"
@@ -20,17 +22,24 @@ async def lifespan(app: FastAPI):
     # Startup
     os.makedirs(UPLOAD_DIR, exist_ok=True)
     print(f"🚀 Application started. Upload directory: {UPLOAD_DIR}")
+    
+    # Получаем менеджер очереди
+    qm = get_queue_manager()
+    stats = qm.get_queue_stats()
+    print(f"📊 Статистика очереди при запуске:")
+    print(f"   - Файлов в очереди: {stats['total_files']}")
+    print(f"   - Общий размер: {stats['total_size_mb']:.2f} MB")
+    print(f"   - Макс. размер очереди: {stats['max_queue_size']}")
+    print(f"   - Макс. возраст файлов: {stats['max_file_age_hours']} ч")
+    
     yield
+    
     # Shutdown
     print("👋 Application shutting down...")
-    # Очистка старых файлов (старше 1 часа)
-    current_time = time.time()
-    for filename in os.listdir(UPLOAD_DIR):
-        filepath = os.path.join(UPLOAD_DIR, filename)
-        if os.path.isfile(filepath):
-            if current_time - os.path.getmtime(filepath) > 3600:
-                os.remove(filepath)
-                print(f"Removed old file: {filename}")
+    stats = qm.get_queue_stats()
+    print(f"📊 Финальная статистика очереди:")
+    print(f"   - Файлов в очереди: {stats['total_files']}")
+    print(f"   - Общий размер: {stats['total_size_mb']:.2f} MB")
 
 app = FastAPI(
     title="Cross Stitch Pattern Generator",
@@ -42,6 +51,14 @@ app = FastAPI(
 # Создаем необходимые директории
 os.makedirs("uploads", exist_ok=True)
 os.makedirs("static", exist_ok=True)
+
+# Инициализируем менеджер очереди
+# Параметры: max_queue_size=100, max_file_age_hours=1
+queue_manager = init_queue_manager(
+    upload_dir="uploads",
+    max_queue_size=int(os.getenv("MAX_QUEUE_SIZE", 100)),
+    max_file_age_hours=int(os.getenv("MAX_FILE_AGE_HOURS", 1))
+)
 
 # Монтируем статические файлы
 app.mount("/static", StaticFiles(directory="static"), name="static")
@@ -252,7 +269,7 @@ async def generate_pattern(
     file: UploadFile = File(...),
     max_width: int = Form(80),
     max_colors: int = Form(24),
-    cell_size: int = Form(40)  # Добавляем размер ячейки
+    cell_size: int = Form(40)
 ):
     """Генерирует схему из загруженного изображения."""
     
@@ -276,14 +293,21 @@ async def generate_pattern(
     if file_size > MAX_FILE_SIZE:
         raise HTTPException(400, f"Файл слишком большой. Максимальный размер: {MAX_FILE_SIZE/1024/1024}MB")
     
-    # Сохраняем загруженный файл
-    file_id = str(uuid.uuid4())
-    input_path = f"uploads/{file_id}_input{os.path.splitext(file.filename)[1]}"
+    # Генерируем timestamp для имени файла
+    timestamp = int(time.time() * 1000)  # миллисекунды для уникальности
+    file_id = f"{timestamp}_{uuid.uuid4().hex[:8]}"
+    
+    # Сохраняем загруженный файл с timestamp
+    input_ext = os.path.splitext(file.filename)[1]
+    input_path = f"uploads/{file_id}_input{input_ext}"
     output_image = f"uploads/{file_id}_numbered_pattern.png"
     output_preview = f"uploads/{file_id}_preview.png"
     
     with open(input_path, "wb") as buffer:
         shutil.copyfileobj(file.file, buffer)
+    
+    # Добавляем входной файл в очередь
+    queue_manager.add_file(input_path, file_id, "input")
     
     try:
         # Генерируем схему с номерами
@@ -300,20 +324,23 @@ async def generate_pattern(
         img.thumbnail((400, 400))
         img.save(output_preview)
         
+        # Добавляем сгенерированные файлы в очередь
+        print(output_image +  file_id + "pattern")
+        queue_manager.add_file(output_image, file_id, "pattern")
+        queue_manager.add_file(output_preview, file_id, "preview")
+        
         # Добавляем пути к файлам в результат
-        result["image_url"] = f"/download/{file_id}_numbered_pattern.png"
-        result["preview_url"] = f"/download/{file_id}_preview.png"
+        result["image_url"] = f"/download/{os.path.basename(output_image)}"
+        result["preview_url"] = f"/download/{os.path.basename(output_preview)}"
         result["file_id"] = file_id
+        result["timestamp"] = timestamp
         
         return JSONResponse(result)
         
     except Exception as e:
+        # В случае ошибки удаляем входной файл из очереди
+        queue_manager.remove_by_file_id(file_id)
         raise HTTPException(500, f"Ошибка генерации: {str(e)}")
-    
-    finally:
-        # Очищаем входной файл
-        if os.path.exists(input_path):
-            os.remove(input_path)
 
 @app.get("/download/{filename}")
 async def download_file(filename: str):
@@ -322,6 +349,21 @@ async def download_file(filename: str):
     if not os.path.exists(file_path):
         raise HTTPException(404, "Файл не найден")
     return FileResponse(file_path, filename=filename)
+
+@app.get("/admin/queue-stats")
+async def get_queue_stats():
+    """Возвращает статистику очереди файлов (только для администрирования)"""
+    # В продакшене добавьте аутентификацию!
+    qm = get_queue_manager()
+    return JSONResponse(qm.get_queue_stats())
+
+@app.post("/admin/cleanup-now")
+async def force_cleanup():
+    """Принудительно запускает очистку старых файлов"""
+    qm = get_queue_manager()
+    qm.cleanup_old_files()
+    qm.enforce_queue_size()
+    return {"message": "Cleanup completed", "stats": qm.get_queue_stats()}
 
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=8000)
