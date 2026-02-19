@@ -1,6 +1,7 @@
 version: '3.8'
 
 services:
+  # FastAPI приложение
   app:
     build: .
     container_name: cross-stitch-app
@@ -10,24 +11,32 @@ services:
       - ./static:/app/static:ro
     environment:
       - ENVIRONMENT=production
-      - MAX_UPLOAD_SIZE=10485760
+      - MAX_UPLOAD_SIZE=10485760  # 10MB
     networks:
       - cross-stitch-network
+    # Упрощенные ограничения ресурсов (работает во всех версиях)
     deploy:
       resources:
         limits:
           cpus: '1'
           memory: 512M
-        reservations:
-          cpus: '0.5'
-          memory: 256M
+    # Альтернативный вариант для docker-compose без swarm:
+    # mem_limit: 512m
+    # cpus: '1'
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
 
+  # Nginx для обратного прокси
   nginx:
     image: nginx:alpine
     container_name: cross-stitch-nginx
     restart: unless-stopped
     ports:
-      - "80:80"
+      - "0.0.0.0:8080:80"  # Пробрасываем порт 8080 наружу
     volumes:
       - ./nginx/nginx.conf:/etc/nginx/conf.d/default.conf:ro
       - ./static:/usr/share/nginx/html/static:ro
@@ -36,6 +45,12 @@ services:
       - app
     networks:
       - cross-stitch-network
+    # Упрощенные ограничения
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 256M
 
 networks:
   cross-stitch-network:

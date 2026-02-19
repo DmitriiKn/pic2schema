@@ -1,0 +1,19 @@
+version: '3.8'
+
+services:
+  app:
+    build: .
+    container_name: cross-stitch-app
+    restart: unless-stopped
+    ports:
+      - "8081:8000"  # Прямой доступ к FastAPI
+    volumes:
+      - uploads_data:/app/uploads
+      - ./static:/app/static:ro
+    environment:
+      - ENVIRONMENT=production
+    mem_limit: 512m
+    cpus: '1'
+
+volumes:
+  uploads_data:
